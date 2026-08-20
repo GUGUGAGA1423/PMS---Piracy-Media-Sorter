@@ -23,4 +23,4 @@ An automated media sorting and clean-renaming CLI tool designed specifically for
 Run this single command in Termux to install all dependencies and set up the `sort` executable:
 
 ```bash
-curl -sL [https://raw.githubusercontent.com/GUGUGAGA1423/piracy-media-sorter/main/install.sh](https://raw.githubusercontent.com/GUGUGAGA1423/piracy-media-sorter/main/install.sh) | bash
+curl -sL https://raw.githubusercontent.com/GUGUGAGA1423/piracy-media-sorter/main/install.sh | bash
