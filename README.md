@@ -51,7 +51,7 @@ rm ~/.organizer_config.json
 ## 📂 Folder Output Structure
 
 ```text
-Media/
+Media/ **(the main folder you pick)**
 ├── Anime/
 │   ├── Movies/
 │   │   └── Your Name/
