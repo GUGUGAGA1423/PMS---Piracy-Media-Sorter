@@ -24,3 +24,47 @@ Run this single command in Termux to install all dependencies and set up the `so
 
 ```bash
 curl -sL https://raw.githubusercontent.com/GUGUGAGA1423/PMS---piracy-media-sorter/main/install.sh | bash
+```
+
+---
+
+## 🛠️ Usage
+
+Simply run:
+
+```bash
+sort
+```
+
+On first run, the tool will automatically prompt you to:
+1. Paste your **TMDB API Key** (saved to `~/.organizer_config.json`).
+2. Pick your primary media directory using the **Interactive Folder Selector** (e.g., `/sdcard/Media`).
+
+To reset your settings or change your media directory in the future, delete the configuration file:
+
+```bash
+rm ~/.organizer_config.json
+```
+
+---
+
+## 📂 Folder Output Structure
+
+```text
+Media/
+├── Anime/
+│   ├── Movies/
+│   │   └── Your Name/
+│   │       └── Your Name.mkv
+│   └── Shows/
+│       └── The Dangers in My Heart/
+│           ├── Season 00/
+│           │   └── The Dangers in My Heart - S00E01 - Twi-Yaba.mp4
+│           └── Season 01/
+│               └── The Dangers in My Heart - S01E01.mkv
+└── TV/
+    └── Shows/
+        └── Rick and Morty/
+            └── Season 01/
+                └── Rick and Morty - S01E01.mkv
+```
