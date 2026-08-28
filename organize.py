@@ -16,11 +16,17 @@ C_GREEN = "\033[92m"
 C_YELLOW = "\033[93m"
 C_BLUE = "\033[94m"
 C_MAGENTA = "\033[95m"
+C_RED = "\033[91m"
 
 SPECIAL_REGEX = r'(?i)\b(twi-yaba|ova|oav|special|specials|sp|ona|extra|side\s*story)\b'
+NOISE_PREFIXES = r'(?i)^(animepahe|subsplease|erai-raws|judas|horriblesubs|crunchyroll)[_\s\-]*'
+NOISE_TERMS = r'(?i)\b(eng dub|eng sub|dub|sub|dual audio|multi-audio|1080p|720p|4k|bd|web-dl|x264|x265|hevc|10bit|moviesverse\.net)\b'
+
+def sanitize_name(name):
+    """Removes invalid characters for Android/Linux filesystems."""
+    return re.sub(r'[\\/*?:"<>|]', '', name).strip()
 
 def select_media_directory(start_dir="/sdcard"):
-    """Interactive CLI directory picker for choosing the main media destination."""
     current = os.path.abspath(start_dir)
     while True:
         print("=" * 60)
@@ -61,7 +67,7 @@ def select_media_directory(start_dir="/sdcard"):
         elif choice == "+":
             new_name = input("Enter new folder name: ").strip()
             if new_name:
-                new_path = os.path.join(current, new_name)
+                new_path = os.path.join(current, sanitize_name(new_name))
                 try:
                     os.makedirs(new_path, exist_ok=True)
                     current = new_path
@@ -105,18 +111,18 @@ def load_config():
     return tmdb_key, media_dir
 
 TMDB_API_KEY, MEDIA_DIR = load_config()
-NOISE_PREFIXES = r'(?i)^(animepahe|subsplease|erai-raws|judas|horriblesubs|crunchyroll)[_\s\-]*'
 
 def clean_title(filename):
     info = guessit(filename)
     raw_title = str(info.get("title", "Unknown Title"))
     cleaned = re.sub(NOISE_PREFIXES, '', raw_title)
-    cleaned = cleaned.replace('_', ' ').strip()
-    
+    cleaned = re.sub(NOISE_TERMS, '', cleaned)
+    cleaned = cleaned.replace('.', ' ').replace('_', ' ').strip()
+
     has_explicit_season = "season" in info and info["season"] is not None
     season = info.get("season", 1)
     episode = info.get("episode")
-    
+
     special_match = re.search(SPECIAL_REGEX, filename)
     is_special = bool(special_match) or info.get("type") == "special" or season == 0
 
@@ -132,10 +138,10 @@ def clean_title(filename):
     return cleaned, season, episode, info.get("type"), is_special, extra_tag
 
 def format_clean_filename(title, season, episode, is_movie, ext, extra_tag=""):
-    safe_title = re.sub(r'[\\/*?:"<>|]', '', title)
+    safe_title = sanitize_name(title)
     if is_movie:
         return f"{safe_title}{ext}"
-    
+
     season_str = f"S{season:02d}"
     if isinstance(episode, list):
         ep_str = "".join([f"E{e:02d}" for e in episode])
@@ -145,12 +151,13 @@ def format_clean_filename(title, season, episode, is_movie, ext, extra_tag=""):
         ep_str = "E01"
 
     if extra_tag:
-        safe_tag = re.sub(r'[\\/*?:"<>|]', '', extra_tag).strip()
+        safe_tag = sanitize_name(extra_tag)
         return f"{safe_title} - {season_str}{ep_str} - {safe_tag}{ext}"
-    
+
     return f"{safe_title} - {season_str}{ep_str}{ext}"
 
-def check_tmdb(title):
+def check_tmdb(title, is_episode=False):
+    """Queries TMDB and picks the result matching whether the item is a TV episode or Movie."""
     if not TMDB_API_KEY:
         return None, title, False
 
@@ -166,11 +173,22 @@ def check_tmdb(title):
             res = requests.get(url, timeout=5).json()
             results = res.get("results", [])
             if results:
-                top = results[0]
-                media_type = top.get("media_type")
-                canonical_title = top.get("name") or top.get("title") or sub_query
-                origin_countries = top.get("origin_country", [])
-                original_lang = top.get("original_language", "")
+                selected = None
+                target_type = "tv" if is_episode else "movie"
+
+                # Filter results to match the expected format (TV show vs Movie)
+                for item in results:
+                    if item.get("media_type") == target_type:
+                        selected = item
+                        break
+
+                if not selected:
+                    selected = results[0]
+
+                media_type = selected.get("media_type")
+                canonical_title = selected.get("name") or selected.get("title") or sub_query
+                origin_countries = selected.get("origin_country", [])
+                original_lang = selected.get("original_language", "")
                 is_japanese = "JP" in origin_countries or original_lang == "ja"
                 return media_type, canonical_title, is_japanese
         except Exception:
@@ -178,6 +196,7 @@ def check_tmdb(title):
     return None, title, False
 
 def check_anilist(title):
+    """Fallback for Japanese anime not properly indexed in TMDB."""
     url = "https://graphql.anilist.co"
     query = """
     query ($search: String) {
@@ -190,25 +209,20 @@ def check_anilist(title):
       }
     }
     """
-    words = title.split()
-    for i in range(len(words), 0, -1):
-        sub_query = " ".join(words[:i])
-        if len(sub_query) < 2:
-            break
-        try:
-            response = requests.post(
-                url, json={"query": query, "variables": {"search": sub_query}}, timeout=5
-            )
-            data = response.json()
-            if "data" in data and data["data"]["Media"]:
-                media = data["data"]["Media"]
-                eng_title = media["title"].get("english") or ""
-                rom_title = media["title"].get("romaji") or ""
-                canonical_title = eng_title or rom_title or sub_query
-                is_movie = media.get("format") == "MOVIE"
-                return True, is_movie, canonical_title
-        except Exception:
-            pass
+    try:
+        response = requests.post(
+            url, json={"query": query, "variables": {"search": title}}, timeout=5
+        )
+        data = response.json()
+        if "data" in data and data.get("data") and data["data"]["Media"]:
+            media = data["data"]["Media"]
+            eng_title = media["title"].get("english") or ""
+            rom_title = media["title"].get("romaji") or ""
+            canonical_title = eng_title or rom_title or title
+            is_movie = media.get("format") == "MOVIE"
+            return True, is_movie, canonical_title
+    except Exception:
+        pass
     return False, False, title
 
 def organize_media():
@@ -227,64 +241,73 @@ def organize_media():
         if os.path.isdir(file_path):
             continue
 
-        title_query, season, episode, guessed_type, is_special, extra_tag = clean_title(file_name)
-        tmdb_type, canonical_title, is_japanese = check_tmdb(title_query)
+        try:
+            title_query, season, episode, guessed_type, is_special, extra_tag = clean_title(file_name)
+            is_ep = (episode is not None) or (guessed_type == "episode")
 
-        is_movie = False
-        icon = "🎬"
+            # 1. Query TMDB with strict type filtering
+            tmdb_type, canonical_title_raw, is_japanese = check_tmdb(title_query, is_episode=is_ep)
 
-        if tmdb_type:
-            if is_japanese:
-                icon = "⛩️"
-                if tmdb_type == "movie":
-                    is_movie = True
-                    target_dir = os.path.join(MEDIA_DIR, "Anime", "Movies", canonical_title)
+            is_movie = False
+            icon = "🎬"
+
+            if tmdb_type:
+                canonical_title = sanitize_name(canonical_title_raw)
+                if is_japanese:
+                    icon = "⛩️"
+                    if tmdb_type == "movie" and not is_ep:
+                        is_movie = True
+                        target_dir = os.path.join(MEDIA_DIR, "Anime", "Movies", canonical_title)
+                    else:
+                        target_dir = os.path.join(MEDIA_DIR, "Anime", "Shows", canonical_title, f"Season {season:02d}")
                 else:
-                    target_dir = os.path.join(MEDIA_DIR, "Anime", "Shows", canonical_title, f"Season {season:02d}")
+                    if tmdb_type == "tv" or is_ep:
+                        icon = "📺"
+                        target_dir = os.path.join(MEDIA_DIR, "TV", "Shows", canonical_title, f"Season {season:02d}")
+                    else:
+                        icon = "🎥"
+                        is_movie = True
+                        target_dir = os.path.join(MEDIA_DIR, "Movies", canonical_title)
             else:
-                if tmdb_type == "tv":
+                # 2. AniList fallback
+                is_anime, is_anime_movie, ani_title = check_anilist(title_query)
+                if is_anime:
+                    icon = "⛩️"
+                    canonical_title = sanitize_name(ani_title)
+                    if is_anime_movie and not is_ep:
+                        is_movie = True
+                        target_dir = os.path.join(MEDIA_DIR, "Anime", "Movies", canonical_title)
+                    else:
+                        target_dir = os.path.join(MEDIA_DIR, "Anime", "Shows", canonical_title, f"Season {season:02d}")
+                elif is_ep:
                     icon = "📺"
+                    canonical_title = sanitize_name(title_query.title())
                     target_dir = os.path.join(MEDIA_DIR, "TV", "Shows", canonical_title, f"Season {season:02d}")
-                else:
+                elif guessed_type == "movie":
                     icon = "🎥"
                     is_movie = True
+                    canonical_title = sanitize_name(title_query.title())
                     target_dir = os.path.join(MEDIA_DIR, "Movies", canonical_title)
-        else:
-            is_anime, is_anime_movie, ani_title = check_anilist(title_query)
-            if is_anime:
-                icon = "⛩️"
-                canonical_title = ani_title
-                if is_anime_movie:
-                    is_movie = True
-                    target_dir = os.path.join(MEDIA_DIR, "Anime", "Movies", ani_title)
                 else:
-                    target_dir = os.path.join(MEDIA_DIR, "Anime", "Shows", ani_title, f"Season {season:02d}")
-            elif guessed_type == "episode":
-                icon = "📺"
-                canonical_title = title_query.title()
-                target_dir = os.path.join(MEDIA_DIR, "TV", "Shows", canonical_title, f"Season {season:02d}")
-            elif guessed_type == "movie":
-                icon = "🎥"
-                is_movie = True
-                canonical_title = title_query.title()
-                target_dir = os.path.join(MEDIA_DIR, "Movies", canonical_title)
-            else:
-                icon = "📦"
-                canonical_title = title_query.title()
-                target_dir = os.path.join(MEDIA_DIR, "Unsorted")
+                    icon = "📦"
+                    canonical_title = sanitize_name(title_query.title())
+                    target_dir = os.path.join(MEDIA_DIR, "Unsorted")
 
-        new_file_name = format_clean_filename(canonical_title, season, episode, is_movie, ext, extra_tag)
+            new_file_name = format_clean_filename(canonical_title, season, episode, is_movie, ext, extra_tag)
 
-        os.makedirs(target_dir, exist_ok=True)
-        dest_path = os.path.join(target_dir, new_file_name)
+            os.makedirs(target_dir, exist_ok=True)
+            dest_path = os.path.join(target_dir, new_file_name)
 
-        print(f"\n{C_BOLD}{C_GREEN}🚀 [MOVING MEDIA]{C_RESET}")
-        print(f"  {C_BOLD}📄 Original :{C_RESET} {file_name}")
-        print(f"  {C_BOLD}🏷️  Renamed  :{C_RESET} {C_CYAN}{new_file_name}{C_RESET}")
-        print(f"  {C_BOLD}{icon} Category :{C_RESET} {C_MAGENTA}{target_dir.replace(MEDIA_DIR, '')}{C_RESET}")
-        print(f"  {C_BOLD}📂 Full Path:{C_RESET} {C_YELLOW}{dest_path}{C_RESET}")
+            print(f"\n{C_BOLD}{C_GREEN}🚀 [MOVING MEDIA]{C_RESET}")
+            print(f"  {C_BOLD}📄 Original :{C_RESET} {file_name}")
+            print(f"  {C_BOLD}🏷️  Renamed  :{C_RESET} {C_CYAN}{new_file_name}{C_RESET}")
+            print(f"  {C_BOLD}{icon} Category :{C_RESET} {C_MAGENTA}{target_dir.replace(MEDIA_DIR, '')}{C_RESET}")
+            print(f"  {C_BOLD}📂 Full Path:{C_RESET} {C_YELLOW}{dest_path}{C_RESET}")
 
-        shutil.move(file_path, dest_path)
+            shutil.move(file_path, dest_path)
+
+        except Exception as e:
+            print(f"\n{C_BOLD}{C_RED}❌ Error processing '{file_name}': {e}{C_RESET}\n")
 
 if __name__ == "__main__":
     organize_media()
