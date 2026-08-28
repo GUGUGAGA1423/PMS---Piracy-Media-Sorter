@@ -11,9 +11,10 @@ if [ ! -d "$HOME/storage" ]; then
     termux-setup-storage
 fi
 
-# 2. Update and upgrade system dependencies
+# 2. Update and upgrade dependencies silently without hanging on config prompts
 echo "📦 Installing system dependencies..."
-pkg update -y && pkg upgrade -y && pkg install -y python curl git
+export DEBIAN_FRONTEND=noninteractive
+pkg update -y && pkg upgrade -y -o Dpkg::Options::="--force-confold" && pkg install -y python curl git
 
 # 3. Install Python dependencies
 echo "🐍 Installing Python libraries..."
