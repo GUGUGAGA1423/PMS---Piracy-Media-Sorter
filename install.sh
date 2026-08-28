@@ -1,4 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
+set -e
 
 echo "============================================================"
 echo "🚀 Installing PMS - Piracy Media Sorter"
@@ -10,9 +11,9 @@ if [ ! -d "$HOME/storage" ]; then
     termux-setup-storage
 fi
 
-# 2. Update and install packages
+# 2. Update and upgrade system dependencies
 echo "📦 Installing system dependencies..."
-pkg update -y && pkg install -y python curl git
+pkg update -y && pkg upgrade -y && pkg install -y python curl git
 
 # 3. Install Python dependencies
 echo "🐍 Installing Python libraries..."
