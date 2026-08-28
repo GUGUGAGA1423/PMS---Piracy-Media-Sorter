@@ -24,14 +24,22 @@ pip install requests guessit
 mkdir -p ~/.pms
 curl -sL https://raw.githubusercontent.com/GUGUGAGA1423/PMS---piracy-media-sorter/main/organize.py -o ~/.pms/organize.py
 
-# 5. Create executable wrapper so typing 'sort' runs the script from anywhere
-cat << 'EOF' > $PREFIX/bin/sort
+# 5. Create 'pms' executable and set up the 'sort' alias
+cat << 'EOF' > $PREFIX/bin/pms
 #!/data/data/com.termux/files/usr/bin/bash
 python3 ~/.pms/organize.py "$@"
 EOF
 
-chmod +x $PREFIX/bin/sort
+chmod +x $PREFIX/bin/pms
+
+# Append alias to ~/.bashrc if it isn't already there
+if [ -f ~/.bashrc ]; then
+    grep -q "alias sort=" ~/.bashrc || echo "alias sort='pms'" >> ~/.bashrc
+else
+    echo "alias sort='pms'" > ~/.bashrc
+fi
 
 echo "============================================================"
-echo "✅ Installation complete! Type 'sort' anywhere to run."
+echo "✅ Installation complete!"
+echo "👉 Run 'source ~/.bashrc' (or restart Termux) to activate the 'sort' command."
 echo "============================================================"
