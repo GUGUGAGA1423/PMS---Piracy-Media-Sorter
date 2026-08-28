@@ -25,7 +25,7 @@ Run this single command in Termux to install all dependencies and set up the `so
 ```bash
 curl -sL https://raw.githubusercontent.com/GUGUGAGA1423/PMS---piracy-media-sorter/main/install.sh | bash
 ```
-
+(after everything finished downloading, just type source ~/.bashrc)
 ---
 
 ## 🛠️ Usage
